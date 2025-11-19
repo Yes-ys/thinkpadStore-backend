@@ -25,7 +25,10 @@ SECRET_KEY = 'django-insecure-_a6n-#z)57#t%)!wy%p64gf-$s&b=$%x+$8@(pkr9#che8y-gf
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    '192.168.56.101',
+    'tbk.lighilit.top',
+]
 
 
 # Application definition
@@ -38,7 +41,11 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'thinkpad_store',
+    'store',
 ]
+AUTH_USER_MODEL = 'store.User'
 
 REST_FRAMEWORK = {
   'DEFAULT_AUTHENTICATION_CLASSES': (
