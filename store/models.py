@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -63,20 +64,29 @@ class CartItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
 
     def total_price(self):
-        return self.quantity * self.product.price
+        now = datetime.now()
+        dis = DiscountPromotion.objects.filter(
+            start_date__gte=now,
+            end_date__lte=now,
+        )
+        res = self.quantity * self.product.price
+        if dis is not None:
+            for d in dis:
+                res = res * d.rate()
+        return res
 
     def __str__(self):
         return f"{self.quantity} x {self.product.name} in {self.cart.user.username}'s cart"
 
 
-
-class Activity(models.Model):
+class Promotion(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField()
-    start_date = models.DateTimeField()
+    start_date = models.DateTimeField(auto_now_add=True)
     end_date = models.DateTimeField()
-    #TODO
-    #affect = models.
 
-    def __str__(self):
-        return self.name
+class DiscountPromotion(Promotion):
+    '打折; discount 8 表示八折'
+    discount = models.SmallIntegerField()
+    def rate(self):
+        return 1.0 - self.discount / 10.0

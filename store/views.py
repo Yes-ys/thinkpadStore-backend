@@ -23,8 +23,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 # 购物车视图
 class CartViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-    serializer_class = CartSerializer
+    serializer_class = CartItemSerializer
 
     def get_queryset(self):
         return Cart.objects.filter(user=self.request.user)
