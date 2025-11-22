@@ -28,6 +28,8 @@ DEBUG = True
 ALLOWED_HOSTS = [
     '192.168.56.101',
     'tbk.lighilit.top',
+    'localhost',
+    '10.140.33.49',
 ]
 
 
