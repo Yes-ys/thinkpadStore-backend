@@ -69,6 +69,7 @@ class Cart(models.Model):
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, related_name='cart_items', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    #TODO: on_delete behavior: when product is deleted, replace with a "deleted product" placeholder?
     quantity = models.PositiveIntegerField(default=1)
 
     def original_total_price(self):
@@ -88,7 +89,34 @@ class CartItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.product.name} in {self.cart.user.username}'s cart"
+    
+    def save(self, *args, **kwargs):
+        """
+        Custom save method.
+        If this is a new object and a similar one already exists,
+        increment the existing one instead of creating a new one.
+        """
+        ## Check if this is a new object (has no primary key yet)
+        if not self.pk: #_state.adding:
+            # Try to find an existing cart item for this user and product
+            existing_item = CartItem.objects.filter(
+                cart=self.cart,
+                product=self.product
+            ).first()
 
+            if existing_item:
+                # If it exists, increment its quantity and save it
+                existing_item.quantity += self.quantity
+                existing_item.save(update_fields=['quantity'])
+                # make sure response is correct
+                #TODO: get rid of hand-writing
+                self.id = existing_item.id
+                self.quantity = existing_item.quantity  
+                # Prevent saving the new object `self`
+                return
+        # If it's not a new object or no duplicate was found, save as usual
+        super().save(*args, **kwargs)
+    # no need to override delete()
 
 class Promotion(models.Model):
     name = models.CharField(max_length=255)
