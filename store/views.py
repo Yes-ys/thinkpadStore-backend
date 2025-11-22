@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, viewsets
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import User, Product, CartItem, Cart, product_images_url
 from .serializers import UserSerializer, ProductSerializer, UserLoginSerializer, CartItemSerializer
 from drf_yasg import openapi
@@ -50,35 +50,35 @@ class CartViewSet(viewsets.ModelViewSet):
         serializer.save(cart=Cart.objects.get(user=self.request.user))
 
 # JWT 登录视图
-class LoginView(APIView):
-    _M_USER_NOT_FOUND = 'User not found'
+class LoginView(TokenObtainPairView):
+    #XXX: workaround for drf-yasg not generating response schema for TokenObtainPairView
     @swagger_auto_schema(
-        request_body=UserLoginSerializer,
         responses={
             200: openapi.Response(
                 description="Login successful",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
-                        #'refresh': openapi.Schema(type=openapi.TYPE_STRING),
-                        'token': openapi.Schema(type=openapi.TYPE_STRING, description="Access token"),
+                        'refresh': openapi.Schema(type=openapi.TYPE_STRING),
+                        'access': openapi.Schema(type=openapi.TYPE_STRING, description="Access token"),
                     }
                 )
             ),
-            401: "Invalid credentials",
-            404: _M_USER_NOT_FOUND,
+            401:  openapi.Response(
+                description="Unauthorized",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'detail': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            description="Error message",
+                            enum=[
+                                "No active account found with the given credentials"
+                            ]),
+                    }
+                ),
+            )
         }
     )
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        user = User.objects.filter(username=username).first()
-        if user is None:
-            return Response(self._M_USER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-        if not user.check_password(password):
-            return Response('Invalid credentials', status=status.HTTP_401_UNAUTHORIZED)
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            #'refresh': str(refresh),
-            'token': str(refresh.access_token),
-        })
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
