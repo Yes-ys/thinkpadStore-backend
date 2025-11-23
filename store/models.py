@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timezone
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import slugify
 
 
@@ -19,6 +19,7 @@ class User(AbstractUser):
     # no need to override delete(), as CASCADING will handle Cart deletion
 
 product_images_url = 'product_images/'
+deleted_product_image_url = product_images_url + 'deleted_product_na.svg'
 
 def product_image_upload_path(instance, filename):
     """
@@ -26,10 +27,12 @@ def product_image_upload_path(instance, filename):
     """
     _, file_extension = os.path.splitext(filename)
     # Use slugify to create a safe filename
-    safe_name = slugify(instance.name)
-    safe_model = slugify(instance.model)
-    return product_images_url + f"{safe_name}_{safe_model}{file_extension}"
+    safe_name = slugify(instance.get_unique_identifier())
+    return product_images_url + f"{safe_name}{file_extension}"
 
+class ProductManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().exclude(**Product._DELETED_ONES_UNIQUE_ATTRS)
 
 class Product(models.Model):
     name = models.CharField(max_length=255)
@@ -39,18 +42,43 @@ class Product(models.Model):
     stock = models.PositiveIntegerField()
     image = models.FileField(upload_to=product_image_upload_path)
 
+    # ensure the deleted placeholder is not in normal queries
+    _objects_ = models.Manager()  # The default manager.
+    @classmethod
+    def exists_deleted_placeholder(cls):
+        return cls._objects_.filter(**cls._DELETED_ONES_UNIQUE_ATTRS).exists()
+    objects = ProductManager()
+
     class Meta:
         unique_together = ('name', 'model')
 
     def __str__(self):
         return self.name
 
+    def get_unique_identifier(self):
+        return f"{self.name}_{self.model}"
+
+    _DELETED_ONES_UNIQUE_ATTRS = dict(
+        name="(Deleted Product)",
+        model="N/A",
+    )
+    _DELETED_ONES_ATTRS = dict(**_DELETED_ONES_UNIQUE_ATTRS,
+        price=0.0, stock=0,
+        description="This product has been deleted.",
+        image=deleted_product_image_url,
+    )
+    @classmethod
+    def get_placeholder_for_deleted(cls):
+        return cls.objects.get(**cls._DELETED_ONES_UNIQUE_ATTRS)
 
     # Override the delete method to remove the image file
     def delete(self, *args, **kwargs):
         self.image.delete(save=False) # if `save` this line, recsursive loop
         # this will also `save`
         super().delete(*args, **kwargs)
+
+        with transaction.atomic():
+            CartItem.handle_product_deletion(self)
 
     # no need to override the save method to delete the old image file when updating
     #  as with `product_image_upload_path` and `unique_together`,
@@ -72,8 +100,19 @@ class Cart(models.Model):
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, related_name='cart_items', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    #TODO: on_delete behavior: when product is deleted, replace with a "deleted product" placeholder?
     quantity = models.PositiveIntegerField(default=1)
+
+    @classmethod
+    def handle_product_deletion(cls, product):
+        """
+        Handle the deletion of a product by replacing it with a 'Deleted Product' placeholder
+        in all cart items that reference the deleted product.
+        """
+        deleted_product = Product.get_placeholder_for_deleted()
+        affected_items = cls.objects.filter(product=product)
+        for item in affected_items:
+            item.product = deleted_product
+            item.save(update_fields=['product'])
 
     def original_total_price(self):
         return self.quantity * self.product.price
